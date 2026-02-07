@@ -1,0 +1,169 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  background: #f5f7fa;
+}
+
+.App {
+  min-height: 100vh;
+}
+
+.App-header {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 2rem;
+  text-align: center;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+
+.App-header h1 {
+  font-size: 2.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.create-section {
+  margin-bottom: 2rem;
+  text-align: center;
+}
+
+.create-button {
+  background: #667eea;
+  color: white;
+  border: none;
+  padding: 1rem 2rem;
+  font-size: 1.1rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s;
+  font-weight: 600;
+}
+
+.create-button:hover {
+  background: #5568d3;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.create-button:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.stores-section h2 {
+  margin-bottom: 1.5rem;
+  color: #2d3748;
+}
+
+.empty-state {
+  text-align: center;
+  color: #718096;
+  padding: 3rem;
+  background: white;
+  border-radius: 8px;
+}
+
+.stores-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1.5rem;
+}
+
+.store-card {
+  background: white;
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.store-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+}
+
+.store-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 2px solid #f7fafc;
+}
+
+.store-header h3 {
+  color: #2d3748;
+  font-size: 1.25rem;
+}
+
+.status {
+  padding: 0.25rem 0.75rem;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.status-provisioning {
+  background: #fef5e7;
+  color: #f39c12;
+}
+
+.status-ready {
+  background: #d4edda;
+  color: #28a745;
+}
+
+.status-failed {
+  background: #f8d7da;
+  color: #dc3545;
+}
+
+.store-details {
+  margin: 1rem 0;
+}
+
+.store-details p {
+  margin: 0.5rem 0;
+  color: #4a5568;
+}
+
+.store-link {
+  display: inline-block;
+  margin-top: 0.5rem;
+  color: #667eea;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.store-link:hover {
+  text-decoration: underline;
+}
+
+.delete-button {
+  width: 100%;
+  background: #e53e3e;
+  color: white;
+  border: none;
+  padding: 0.75rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 600;
+  transition: background 0.3s;
+}
+
+.delete-button:hover {
+  background: #c53030;
+}

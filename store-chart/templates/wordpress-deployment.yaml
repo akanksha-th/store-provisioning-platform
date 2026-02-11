@@ -1,0 +1,85 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  namespace: {{ .Values.storeId }}
+  labels:
+    app: wordpress
+    store-id: {{ .Values.storeId }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+      store-id: {{ .Values.storeId }}
+  template:
+    metadata:
+      labels:
+        app: wordpress
+        store-id: {{ .Values.storeId }}
+    spec:
+      initContainers:
+        - name: wait-for-mysql
+          image: busybox:1.28
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for MySQL to be ready..."
+              until nc -z mysql-service 3306; do
+                echo "MySQL not ready yet, waiting 5s..."
+                sleep 5
+              done
+              echo "MySQL is ready!"
+      containers:
+        - name: wordpress
+          image: "{{ .Values.wordpress.image.repository }}:{{ .Values.wordpress.image.tag }}"
+          imagePullPolicy: {{ .Values.wordpress.image.pullPolicy }}
+          ports:
+            - containerPort: 80
+              name: http
+          env:
+            - name: WORDPRESS_DB_HOST
+              value: "mysql-service"
+            - name: WORDPRESS_DB_USER
+              value: {{ .Values.mysql.user | quote }}
+            - name: WORDPRESS_DB_PASSWORD
+              value: {{ .Values.mysql.password | quote }}
+            - name: WORDPRESS_DB_NAME
+              value: {{ .Values.mysql.database | quote }}
+            - name: WORDPRESS_CONFIG_EXTRA
+              value: "define('FORCE_SSL_ADMIN', false);"
+          volumeMounts:
+            - name: wordpress-storage
+              mountPath: /var/www/html
+          livenessProbe:
+            httpGet:
+              path: /wp-login.php
+              port: 80
+            initialDelaySeconds: 120
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 10
+          readinessProbe:
+            httpGet:
+              path: /wp-login.php
+              port: 80
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 5
+          resources:
+            requests:
+              memory: {{ .Values.wordpress.resources.requests.memory | quote }}
+              cpu: {{ .Values.wordpress.resources.requests.cpu | quote }}
+            limits:
+              memory: {{ .Values.wordpress.resources.limits.memory | quote }}
+              cpu: {{ .Values.wordpress.resources.limits.cpu | quote }}
+      volumes:
+        - name: wordpress-storage
+          {{- if .Values.wordpress.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: wordpress-pvc
+          {{- else }}
+          emptyDir: {}
+          {{- end }}

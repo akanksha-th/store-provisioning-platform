@@ -1,0 +1,84 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: {{ .Values.storeId }}
+  labels:
+    app: mysql
+    store-id: {{ .Values.storeId }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+      store-id: {{ .Values.storeId }}
+  template:
+    metadata:
+      labels:
+        app: mysql
+        store-id: {{ .Values.storeId }}
+    spec:
+      containers:
+        - name: mysql
+          image: "{{ .Values.mysql.image.repository }}:{{ .Values.mysql.image.tag }}"
+          imagePullPolicy: {{ .Values.mysql.image.pullPolicy }}
+          ports:
+            - containerPort: 3306
+              name: mysql
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              value: {{ .Values.mysql.rootPassword | quote }}
+            - name: MYSQL_DATABASE
+              value: {{ .Values.mysql.database | quote }}
+            - name: MYSQL_USER
+              value: {{ .Values.mysql.user | quote }}
+            - name: MYSQL_PASSWORD
+              value: {{ .Values.mysql.password | quote }}
+          args:
+            - "--default-authentication-plugin=mysql_native_password"
+          volumeMounts:
+            - name: mysql-storage
+              mountPath: /var/lib/mysql
+          livenessProbe:
+            exec:
+              command:
+                - mysqladmin
+                - ping
+                - -h
+                - localhost
+                - -u
+                - root
+                - "-p{{ .Values.mysql.rootPassword }}"
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command:
+                - mysqladmin
+                - ping
+                - -h
+                - localhost
+                - -u
+                - root
+                - "-p{{ .Values.mysql.rootPassword }}"
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              memory: {{ .Values.mysql.resources.requests.memory | quote }}
+              cpu: {{ .Values.mysql.resources.requests.cpu | quote }}
+            limits:
+              memory: {{ .Values.mysql.resources.limits.memory | quote }}
+              cpu: {{ .Values.mysql.resources.limits.cpu | quote }}
+      volumes:
+        - name: mysql-storage
+          {{- if .Values.mysql.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: mysql-pvc
+          {{- else }}
+          emptyDir: {}
+          {{- end }}

@@ -12,6 +12,9 @@ services:
       WORDPRESS_DB_NAME: wordpress
     volumes:
       - wordpress-data:/var/www/html
+    depends_on:
+      db: 
+        condition: service_healthy
 
   db:
     image: mysql:8.0
@@ -24,15 +27,30 @@ services:
     volumes:
       - db-data:/var/lib/mysql
     command: '--default-authentication-plugin=mysql_native_password'
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-prootpassword"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
 
   wpcli:
-    image: wordpress-cli
-    depends_on: 
-      - wordpress 
-      - db 
+    image: wordpress:cli
+    depends_on:
+      wordpress:
+        condition: service_started
+      db:
+        condition: service_healthy
     volumes:
       - wordpress-data:/var/www/html
-    command: tail -f /dev/null
+      - ./wp-setup.sh:/wp-setup.sh:ro
+    # command: tail -f /dev/null
+    environment:
+      WORDPRESS_DB_HOST: db
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: wordpress
+      WORDPRESS_DB_NAME: wordpress
+    entrypoint: ["/bin/sh", "/wp-setup.sh"]
 
 volumes:
   wordpress-data: 

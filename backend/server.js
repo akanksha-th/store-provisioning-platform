@@ -16,6 +16,35 @@ app.use(express.json());
 // DATA STORAGE 
 let stores = [];
 let storeIdCounter = 1;
+const STORES_FILE = path.join(__dirname, 'stores.json');
+
+// Load stores from file on startup
+const loadStoresFromFile = () => {
+    try {
+        if (fs.existsSync(STORES_FILE)) {
+            const data = fs.readFileSync(STORES_FILE, 'utf8');
+            const parsed = JSON.parse(data);
+            stores = parsed.stores || [];
+            storeIdCounter = parsed.counter || 1;
+            console.log(`Loaded ${stores.length} stores from file`);
+        }
+    } catch (error) {
+        console.log(`Could not load stores file: ${error.message}`);
+        stores = [];
+    }
+};
+
+// Save stores to file
+const saveStoresToFile = () => {
+    try {
+        fs.writeFileSync(STORES_FILE, JSON.stringify({
+            stores,
+            counter: storeIdCounter
+        }, null, 2));
+    } catch (error) {
+        console.log(`Could not save stores: ${error.message}`);
+    }
+};
 
 // HELPER FUNCTIONS
 // runs terminal commands
@@ -66,6 +95,7 @@ app.post('/api/stores/create', async(req, res) => {
 
         // add to the stores array
         stores.push(newStore);
+        saveStoresToFile();
 
         // return immediately
         res.json({
@@ -86,27 +116,49 @@ app.post('/api/stores/create', async(req, res) => {
 app.delete('/api/stores/:id', async (req, res) => {
     try {
         const { id } = req.params;
+        console.log(`Attempting to delete store: ${id}`);
 
         // find the store
         const store = stores.find(s => s.id === id);
         if (!store) {
+            console.log(`Store ${id} not found`);
             return res.status(404).json({
                 success: false,
-                error: error.message
+                error: 'Store not found'
             });
         }
 
         // delete using docker-compose
         const composeFile = path.join(__dirname, '..' , 'docker-compose', `${id}.yml`);
+        
+        // Always try to stop containers, even if file doesn't exist
+        try {
+            console.log(`Stopping containers for ${id}...`);
+            await runCommand(`helm uninstall ${id} --namespace ${id}`);
+            console.log(`Containers stopped`);
+        } catch (error) {
+            console.log(`Error stopping containers (continuing anyway): ${error.message}`);
+        }
+        
+        // Delete compose file if exists
         if (fs.existsSync(composeFile)) {
-            await runCommand(`docker-compose -f ${composeFile} down -v`);
-            fdatasync.unlinkSync(composeFile);
-        }      
+            try {
+                fs.unlinkSync(composeFile);
+                console.log(`Compose file deleted`);
+            } catch (error) {
+                console.log(`Warning: Could not delete file: ${error.message}`);
+            }
+        }
 
+        // Remove from stores array
         stores = stores.filter(s => s.id !== id);
-        res.join({ success: true });
+        saveStoresToFile();
+        console.log(`Store removed from list`);
+        
+        res.status(200).json({ success: true });
 
     } catch (error) {
+        console.log(`Deletion failed: ${error.message}`);
         res.status(500).json({
             success: false,
             error: error.message
@@ -117,89 +169,137 @@ app.delete('/api/stores/:id', async (req, res) => {
 // BACKGROUND FUNCTIONS
 async function createStoreInBackground(store) {
   try {
-    console.log(`🔄 Starting creation of ${store.id}...`);
+    console.log(`Starting k8s provisioning for ${store.id}...`);
     
-    // 1. Create docker-compose file for this store
-    // NOTE: Using template literals properly - ${} will be replaced with actual values
-    const composeContent = `version: '3.8'
+    // Path to helm chart
+    const chartPath = path.join(__dirname, '..', 'store-chart');
+    const valuesPath =path.join(__dirname, '..', 'store-chart', 'values-local.yaml');
+ 
+    // Install using Helm
+    console.log(`Running helm install...`)
+    await runCommand(
+        `helm upgrade --install ${store.id} "${chartPath}" ` +
+        `--set storeId=${store.id} ` +
+        `--values "${valuesPath}" ` +
+        `--namespace ${store.id} ` +
+        `--create-namespace ` +
+        `--wait ` +
+        `--timeout 3m`
+    );
 
-services:
-  wordpress:
-    image: wordpress:latest
-    restart: always
-    ports:
-      - "${store.port}:80"
-    environment:
-      WORDPRESS_DB_HOST: db
-      WORDPRESS_DB_USER: wordpress
-      WORDPRESS_DB_PASSWORD: wordpress
-      WORDPRESS_DB_NAME: wordpress
-    volumes:
-      - ${store.id}-wordpress:/var/www/html
+    console.log(`Helm installation completed!`);
+    console.log(`---`);
 
-  db:
-    image: mysql:8.0
-    restart: always
-    environment:
-      MYSQL_DATABASE: wordpress
-      MYSQL_USER: wordpress
-      MYSQL_PASSWORD: wordpress
-      MYSQL_ROOT_PASSWORD: rootpassword
-    volumes:
-      - ${store.id}-db:/var/lib/mysql
-    command: '--default-authentication-plugin=mysql_native_password'
-
-volumes:
-  ${store.id}-wordpress:
-  ${store.id}-db:
-`;
+    // Get the NodePort
+    const nodePort = await getWordpressNodePort(store.id);
+    console.log(`WordPress accessible at port ${nodePort}`);
     
-    // 2. Save the file
-    const composeFile = path.join(__dirname, '..', 'docker-compose', `${store.id}.yml`);
-    console.log(`📝 Creating compose file: ${composeFile}`);
-    console.log(`📝 Port will be: ${store.port}`); // DEBUG: Show what port we're using
-    fs.writeFileSync(composeFile, composeContent);
-    console.log(`✅ Compose file created`);
-    
-    // 3. Run docker-compose up
-    console.log(`🐳 Running docker-compose up...`);
-    const command = `docker-compose -f "${composeFile}" up -d`;
-    console.log(`Command: ${command}`);
-    
-    const output = await runCommand(command);
-    console.log(`Docker output: ${output}`);
-    
-    // 4. Wait a bit for WordPress to be ready
-    console.log(`⏳ Waiting 15 seconds for WordPress to start...`);
-    await new Promise(resolve => setTimeout(resolve, 15000));
-    
-    // 5. Update status to ready
+    // Update store with actual URL
     const storeIndex = stores.findIndex(s => s.id === store.id);
     if (storeIndex !== -1) {
       stores[storeIndex].status = 'ready';
+      stores[storeIndex].port = nodePort;
+      stores[storeIndex].url = `http://localhost:${nodePort}`;
+      saveStoresToFile();
     }
     
-    console.log(`✅ Store ${store.id} is ready at ${store.url}`);
+    console.log(`Store ${store.id} is ready at ${store.url}`);
+    console.log(`${'='.repeat(60)}\n`);
     
-  } catch (error) {
-    console.error(`❌ Failed to create store ${store.id}:`);
-    console.error(`Error message: ${error.message}`);
-    console.error(`Error stack:`, error.stack);
-    
-    const storeIndex = stores.findIndex(s => s.id === store.id);
-    if (storeIndex !== -1) {
-      stores[storeIndex].status = 'failed';
-      stores[storeIndex].error = error.message;
+    } catch (error) {
+        console.log(`${'='.repeat(60)}\n`);
+        console.error(`Failed to create store ${store.id}:`);
+        console.error(`Error message: ${error.message}`);
+        console.error(`Error stack:`, error.stack);
+        console.log(`${'='.repeat(60)}\n`);
+        
+        // Update status to failed
+        const storeIndex = stores.findIndex(s => s.id === store.id);
+        if (storeIndex !== -1) {
+            stores[storeIndex].status = 'failed';
+            stores[storeIndex].error = error.message;
+            saveStoresToFile();
+        }
+        
+        // Cleanup
+        try {
+            await runCommand(`helm uninstall ${store.id} --namespace ${store.id}`);
+            await runCommand(`kubectl delete namespace ${store.id}`);
+            console.log(`🧹 Cleanup completed`);
+        } catch (cleanupError) {
+            console.log(`⚠️  Cleanup: ${cleanupError.message}`);
         }
     }
 }
 
+const getWordpressNodePort = async (storeId) => {
+    try {
+        const output = await runCommand(
+            `kubectl get service wordpress-service -n ${storeId} -o jsonpath="{.spec.ports[0].nodePort}"`
+        );
+        return output.trim();
+    } catch (error) {
+        console.error(`Failed to get NodePort: ${error.message}`);
+        return null;
+    }
+};
+
+// UTILITY - Force cleanup all stores
+app.post('/api/stores/cleanup', async (req, res) => {
+    try {
+        console.log('Force cleanup initiated...');
+        
+        // Stop all containers with our naming pattern
+        await runCommand('docker ps -aq --filter "name=store-" | ForEach-Object { docker stop $_ } 2>&1 || true');
+        await runCommand('docker ps -aq --filter "name=store-" | ForEach-Object { docker rm $_ } 2>&1 || true');
+        
+        // Delete all yml files
+        const dockerComposeDir = path.join(__dirname, '..', 'docker-compose');
+        const files = fs.readdirSync(dockerComposeDir);
+        files.forEach(file => {
+            if (file.startsWith('store-') && file.endsWith('.yml')) {
+                fs.unlinkSync(path.join(dockerComposeDir, file));
+            }
+        });
+        
+        // Clear stores array
+        stores = [];
+        storeIdCounter = 1;
+        
+        console.log('Cleanup complete');
+        res.json({ success: true, message: 'All stores cleaned up' });
+        
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+loadStoresFromFile();
 
 // START THE SERVER
 app.listen(PORT, () => {
-    console.log(`Backend server running on https://localhost:${PORT}`);
+    console.log(`Backend server running on http://localhost:${PORT}`);
     console.log(`API endpoints:`);
-    console.log(`   GET     https://localhost:${PORT}/api/stores`);
-    console.log(`   POST    https://localhost:${PORT}/api/store/create`);
-    console.log(`   DELETE  https://localhost:${PORT}/api/stores/:id`);
+    console.log(`   GET     http://localhost:${PORT}/api/stores`);
+    console.log(`   POST    http://localhost:${PORT}/api/stores/create`);
+    console.log(`   DELETE  http://localhost:${PORT}/api/stores/:id`);
+
+    // Verify kubectl is available
+    exec('kubectl version --client', (error, stdout) => {
+        if (error) {
+            console.log(`WARNING: kubectl not found!`);
+            console.log(`   Make sure kubectl is installed and Kubernetes is running`);
+        } else {
+            console.log(`kubectl available`);
+        }
+    });
+    
+    // Verify helm is available
+    exec('helm version', (error, stdout) => {
+        if (error) {
+            console.log(`WARNING: helm not found!`);
+        } else {
+            console.log(`helm available`);
+        }
+    });
 });

@@ -1,0 +1,18 @@
+environment: "production"
+
+mysql: 
+  persistence:
+    storageClass: "local-path"
+
+wordpress:
+  persistence:
+    enabled: true
+    storageClass: "local-path"
+
+service:
+  type: ClusterIP
+
+ingress:
+  enabled: true
+  host: ""
+  tls: false

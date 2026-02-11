@@ -3,9 +3,9 @@ import axios from 'axios';
 import './App.css';
 
 // ============================================
-// CONFIGURATION
+// Using environment variable for API URL
 // ============================================
-const API_URL = 'http://localhost:5000/api';
+const API_URL = process.env.REACT_APP_API_URL || '/api';
 
 // ============================================
 // MAIN COMPONENT
@@ -63,12 +63,30 @@ function App() {
     }
     
     try {
-      await axios.delete(`${API_URL}/stores/${storeId}`);
-      await loadStores(); // Refresh the list
-      alert('Store deleted successfully!');
+      const response = await axios.delete(`${API_URL}/stores/${storeId}`);
+      
+      // Check if actually successful
+      if (response.data.success) {
+        await loadStores(); // Refresh the list
+        // Don't show alert - just let the store disappear from list
+      } else {
+        alert('Failed to delete store: ' + (response.data.error || 'Unknown error'));
+      }
     } catch (error) {
       console.error('Failed to delete store:', error);
-      alert('Failed to delete store: ' + error.message);
+      
+      // Check if it's actually a success (status 200) but axios treating as error
+      if (error.response && error.response.status === 200) {
+        await loadStores(); // Refresh anyway
+        return; // Don't show error
+      }
+      
+      // Only show error if it truly failed
+      if (error.response) {
+        alert('Failed to delete store: ' + (error.response.data.error || error.message));
+      } else {
+        alert('Failed to delete store: Network error');
+      }
     }
   };
   

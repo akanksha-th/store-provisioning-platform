@@ -1,0 +1,15 @@
+environment: "local"
+
+mysql: 
+  persistence:
+    storageClass: "hostpath"
+
+wordpress:
+  persistence:
+    enabled: false
+
+service:
+  type: NodePort
+
+ingress:
+  enabled: false

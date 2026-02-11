@@ -1,0 +1,50 @@
+# Default values for store-chart
+storeId: "store-default"
+environment: "local"
+
+mysql:
+  image:
+    repository: mysql
+    tag: "8.0"
+    pullPolicy: IfNotPresent
+  rootPassword: "rootpassword"
+  database: "wordpress"
+  user: "wordpress"
+  password: "wordpress"
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "250m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+  persistence:
+    enabled: true
+    size: "5Gi"
+    storageClass: ""
+
+wordpress:
+  image:
+    repository: wordpress
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "250m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+  persistence:
+    enabled: false
+    size: "5Gi"
+    storageClass: ""
+
+service:
+  type: NodePort
+  port: 80
+
+ingress:
+  enabled: false
+  host: ""
+  tls: false

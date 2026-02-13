@@ -27,13 +27,25 @@ spec:
               name: mysql
           env:
             - name: MYSQL_ROOT_PASSWORD
-              value: {{ .Values.mysql.rootPassword | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: mysql-root-password
             - name: MYSQL_DATABASE
-              value: {{ .Values.mysql.database | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: mysql-database
             - name: MYSQL_USER
-              value: {{ .Values.mysql.user | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: mysql-user
             - name: MYSQL_PASSWORD
-              value: {{ .Values.mysql.password | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: mysql-password
           args:
             - "--default-authentication-plugin=mysql_native_password"
           volumeMounts:

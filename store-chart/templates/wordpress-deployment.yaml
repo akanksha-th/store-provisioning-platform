@@ -42,11 +42,20 @@ spec:
             - name: WORDPRESS_DB_HOST
               value: "mysql-service"
             - name: WORDPRESS_DB_USER
-              value: {{ .Values.mysql.user | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: mysql-user
             - name: WORDPRESS_DB_PASSWORD
-              value: {{ .Values.mysql.password | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: mysql-password
             - name: WORDPRESS_DB_NAME
-              value: {{ .Values.mysql.database | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: mysql-database
             - name: WORDPRESS_CONFIG_EXTRA
               value: "define('FORCE_SSL_ADMIN', false);"
           volumeMounts:

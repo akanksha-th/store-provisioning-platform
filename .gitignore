@@ -8,6 +8,8 @@ yarn-error.log*
 /dashboard/build
 /dashboard/.env.local
 /dashboard/.env
+docker/
+backend/stores.json
 
 # Docker volumes & generated files
 docker-compose/store-*.yml
@@ -30,4 +32,3 @@ Thumbs.db
 .env
 .env.local
 .env.production
-docker/

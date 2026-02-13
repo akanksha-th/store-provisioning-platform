@@ -25,43 +25,27 @@ Build a multi-tenant store provisioning platform where:
 - Users can create isolated WooCommerce stores on-demand
 - Each store is a fully functional e-commerce site (WordPress + MySQL)
 - Stores are provisioned via Kubernetes for orchestration
-- Same deployment works locally AND in production (k3s on VPS)
+- Same deployment works locally and in production (k3s on VPS)
 - Resources are cleanly torn down when stores are deleted
 
 ### Solution Approach
 
 **Architecture Pattern**: Multi-tenant with namespace-per-store isolation
 
-**Why this approach:**
-- ✅ Complete resource isolation between stores
-- ✅ Easy cleanup (delete namespace = delete everything)
-- ✅ Familiar Kubernetes primitives (Deployments, Services, PVCs)
-- ✅ Production-ready pattern (used by platforms like Heroku, Vercel)
-- ✅ Scales horizontally (add more nodes as needed)
-
-**What we're NOT doing:**
-- ❌ Single namespace with label-based isolation (harder to guarantee cleanup)
-- ❌ Operator pattern (too complex for this scope)
-- ❌ Serverless (WordPress requires stateful components)
-- ❌ Docker Compose only (doesn't meet k8s requirement)
+-  Complete resource isolation between stores
+-  Easy cleanup (delete namespace = delete everything)
+-  Familiar Kubernetes primitives (Deployments, Services, PVCs)
+-  Scales horizontally (add more nodes as needed)
 
 ---
 
 ## Architecture Decisions
 
-### Decision 1: Namespace-per-Store vs Single Namespace
+### Decision 1: Namespace-per-store
 
-**Chosen**: Namespace-per-store
-
-**Reasoning**:
 ```
-Option A: Single namespace, label-based isolation
-  Pros: Simpler, fewer resources
-  Cons: Risk of resource leakage, complex cleanup, no network isolation
-
-Option B: Namespace-per-store ✅ CHOSEN
   Pros: Complete isolation, easy cleanup, production-ready pattern
-  Cons: More overhead (~100KB per namespace)
+  Cons: More overhead than single namespace (~100KB per namespace)
 ```
 
 **Impact**: 
@@ -69,15 +53,13 @@ Option B: Namespace-per-store ✅ CHOSEN
 - Deleting namespace cascades to all resources
 - NetworkPolicies can be added later for network isolation
 
-### Decision 2: Helm vs Kustomize vs Raw YAML
-
-**Chosen**: Helm (mandatory per requirements)
+### Decision 2:  Helm Orchestration
 
 **Why Helm**:
-- ✅ Templating with values (local vs prod)
-- ✅ Versioning and rollback
-- ✅ Package management
-- ✅ Industry standard
+-  Templating with values (local vs prod)
+-  Versioning and rollback
+-  Package management
+-  Industry standard
 
 **How we use it**:
 ```
@@ -88,9 +70,7 @@ store-chart/
 └── templates/            # K8s manifests with {{ .Values }}
 ```
 
-### Decision 3: StatefulSet vs Deployment for MySQL
-
-**Chosen**: Deployment (with single replica)
+### Decision 3: Deployment for MySQL (with single replica)
 
 **Reasoning**:
 ```
@@ -98,7 +78,7 @@ StatefulSet:
   Pros: Stable network identity, ordered deployment
   Cons: Overkill for single-replica, slower to provision
 
-Deployment: ✅ CHOSEN
+Deployment:  CHOSEN
   Pros: Faster provisioning, simpler
   Cons: No stable pod identity (not needed for single replica)
 ```
@@ -109,9 +89,7 @@ Deployment: ✅ CHOSEN
 - Service provides stable DNS
 - Faster provisioning matters for UX
 
-### Decision 4: NodePort vs LoadBalancer vs Ingress
-
-**Chosen**: NodePort for MVP, Ingress for production
+### Decision 4: NodePort for MVP, Ingress for production
 
 **Current State** (NodePort):
 ```
@@ -131,20 +109,17 @@ ingress:
 - NodePort for demo = simpler, works immediately
 - Ingress for production = proper URLs, requires DNS setup
 
-### Decision 5: Backend on Laptop vs Backend in Kubernetes
-
-**Chosen**: Backend on laptop (Node.js local process)
+### Decision 5: Backend on laptop (Node.js local process)
 
 **Reasoning**:
 ```
 Option A: Backend as K8s pod
   Pros: More "cloud-native"
-  Cons: Chicken-egg problem (who provisions the backend?), 
-        complex to develop locally
+  Cons: Complex to develop locally
 
-Option B: Backend on laptop ✅ CHOSEN
+Option B: Backend on laptop  CHOSEN
   Pros: Simple development, easy debugging, kubectl/helm already local
-  Cons: Backend is not HA (acceptable for MVP)
+  Cons: Backend is not HA => SPOF (single point of failure)
 ```
 
 **How it works**:
@@ -155,19 +130,11 @@ Laptop:
   kubectl/helm → configured to talk to local K8s or remote k3s
 ```
 
-### Decision 6: Synchronous vs Asynchronous Provisioning
-
-**Chosen**: Asynchronous with status polling
+### Decision 6: Asynchronous provisioning with status polling
 
 **Flow**:
 ```javascript
-// Synchronous approach (REJECTED)
-POST /api/stores/create
-  → helm install (waits 3 min)
-  → return success
-  → User waits 3 min staring at loading spinner ❌
-
-// Asynchronous approach (CHOSEN) ✅
+// Asynchronous approach (CHOSEN) 
 POST /api/stores/create
   → return immediately with status: "provisioning"
   → helm install in background
@@ -293,10 +260,10 @@ spec:
 values.yaml (base)
   storeId: "store-default"
   mysql.persistence.storageClass: ""
-    ↓
+    
 values-local.yaml (override)
   mysql.persistence.storageClass: "hostpath"
-    ↓
+    
 values-prod.yaml (override)
   mysql.persistence.storageClass: "local-path"
 ```
@@ -362,7 +329,7 @@ initContainers:
 Probe: GET /
   Problem: WordPress redirects to HTTPS → 301 → probe fails
 
-Probe: GET /wp-login.php ✅
+Probe: GET /wp-login.php 
   Solution: Never redirects, always returns 200
 ```
 
@@ -396,16 +363,16 @@ nodePort: auto-assigned (30000-32767)
 ### Store Creation Flow
 ```
 1. User clicks "Create Store" in dashboard
-   ↓
+   
 2. React → POST /api/stores/create
-   ↓
+   
 3. Backend:
    - Generate storeId: "store-1"
    - Create store object: { id, status: "provisioning", ... }
    - Save to stores.json
    - Return immediately (200 OK)
    - Start background provisioning
-   ↓
+   
 4. Background (async):
    - helm upgrade --install store-1 ...
    - Kubernetes creates:
@@ -419,12 +386,12 @@ nodePort: auto-assigned (30000-32767)
    - kubectl get service to fetch NodePort
    - Update store: status = "ready", port = 31234
    - Save to stores.json
-   ↓
+   
 5. Dashboard (polling every 5s):
    - GET /api/stores
    - Sees status: "ready"
    - Shows "Open Store" button
-   ↓
+   
 6. User clicks "Open Store"
    - Opens http://localhost:31234
    - WordPress setup screen appears
@@ -441,9 +408,9 @@ nodePort: auto-assigned (30000-32767)
 ### Store Deletion Flow
 ```
 1. User clicks "Delete" → Confirms
-   ↓
+   
 2. React → DELETE /api/stores/store-1
-   ↓
+   
 3. Backend:
    - helm uninstall store-1 --namespace store-1
      → Deletes: Deployments, Services, ReplicaSets, Pods
@@ -452,10 +419,10 @@ nodePort: auto-assigned (30000-32767)
    - Remove from stores array
    - Save stores.json
    - Return success
-   ↓
+   
 4. Dashboard:
    - Store disappears from list
-   ↓
+   
 5. Kubernetes:
    - Namespace enters "Terminating" state
    - Finalizers run (PVC cleanup)
@@ -498,52 +465,10 @@ Namespace: store-1
 
 **What's NOT isolated** (future work):
 ```
-✗ Network traffic (pods can talk across namespaces)
-✗ Resource consumption (no quotas)
-✗ Node resources (all stores compete for CPU/RAM)
+- Network traffic (pods can talk across namespaces)
+- Resource consumption (no quotas)
+- Node resources (all stores compete for CPU/RAM)
 ```
-
-### Future: NetworkPolicies
-```yaml
-# Deny all traffic except MySQL ← WordPress
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: mysql-policy
-  namespace: store-1
-spec:
-  podSelector:
-    matchLabels:
-      app: mysql
-  policyTypes:
-  - Ingress
-  ingress:
-  - from:
-    - podSelector:
-        matchLabels:
-          app: wordpress
-    ports:
-    - protocol: TCP
-      port: 3306
-```
-
-### Future: ResourceQuota
-```yaml
-apiVersion: v1
-kind: ResourceQuota
-metadata:
-  name: store-quota
-  namespace: store-1
-spec:
-  hard:
-    requests.cpu: "1"
-    requests.memory: 1Gi
-    limits.cpu: "2"
-    limits.memory: 2Gi
-    persistentvolumeclaims: "2"
-```
-
-**Effect**: Each store capped at 1Gi RAM, 2 PVCs max
 
 ---
 
@@ -554,7 +479,7 @@ spec:
 **Two-tier storage**:
 ```
 MySQL: PersistentVolumeClaim (always persistent)
-  ↓
+  
 WordPress: emptyDir (local) OR PVC (prod)
 ```
 
@@ -566,7 +491,7 @@ wordpress.persistence.enabled: false
 ```
 - WordPress files in emptyDir (temporary)
 - Lost on pod restart
-- OK for demo (faster, no storage quota issues)
+- Faster, no storage quota issues
 
 Production (values-prod.yaml):
 ```yaml
@@ -574,7 +499,7 @@ wordpress.persistence.enabled: true
 ```
 - WordPress files in PVC (permanent)
 - Survives pod restarts
-- Required for production (uploaded media, plugins)
+- Required for production - uploaded media, plugins
 
 ### MySQL Persistence
 
@@ -610,20 +535,15 @@ Production:    local-path   (k3s's local-path-provisioner)
 5. Store deleted → PVC deleted → Data lost
 ```
 
-**Backup Strategy** (future):
-- Velero for PVC snapshots
-- MySQL dumps to object storage (S3)
-- Scheduled backups via CronJob
-
 ### What Persists vs What Doesn't
 
 | Data | Persists | Storage |
 |------|----------|---------|
-| MySQL database | ✅ Yes | PVC |
-| WordPress core files | ❌ No (local) / ✅ Yes (prod) | emptyDir/PVC |
-| Uploaded media | ❌ No (local) / ✅ Yes (prod) | emptyDir/PVC |
-| WooCommerce orders | ✅ Yes | MySQL (in PVC) |
-| Store metadata | ✅ Yes | stores.json (backend) |
+| MySQL database |  Yes | PVC |
+| WordPress core files |  No (local) /  Yes (prod) | emptyDir/PVC |
+| Uploaded media |  No (local) /  Yes (prod) | emptyDir/PVC |
+| WooCommerce orders |  Yes | MySQL (in PVC) |
+| Store metadata |  Yes | stores.json (backend) |
 
 ---
 
@@ -637,7 +557,7 @@ Production:    local-path   (k3s's local-path-provisioner)
 ```javascript
 // Using helm upgrade --install (NOT helm install)
 helm upgrade --install store-1 ...
-  ↓
+  
 If store-1 doesn't exist: Install it
 If store-1 exists: Upgrade it (no-op if no changes)
 Never fails with "already exists"
@@ -647,10 +567,10 @@ Never fails with "already exists"
 
 | Scenario | Behavior | Safe? |
 |----------|----------|-------|
-| Create same store twice | Second call upgrades | ✅ Yes |
-| Backend crashes mid-provision | Retry helm install | ✅ Yes |
-| Delete non-existent store | 404 error (expected) | ✅ Yes |
-| Delete same store twice | First succeeds, second 404 | ✅ Yes |
+| Create same store twice | Second call upgrades |  Yes |
+| Backend crashes mid-provision | Retry helm install |  Yes |
+| Delete non-existent store | 404 error (expected) |  Yes |
+| Delete same store twice | First succeeds, second 404 |  Yes |
 
 ### Failure Scenarios
 
@@ -743,18 +663,18 @@ kubectl delete namespace store-X --force --grace-period=0
 **When namespace is deleted**:
 ```
 kubectl delete namespace store-1
-  ↓
+  
 Namespace controller marks for deletion
-  ↓
+  
 Finalizers run:
   1. Delete all Pods → sends SIGTERM → waits 30s → SIGKILL
   2. Delete all Services → releases NodePort
   3. Delete all Deployments → deletes ReplicaSets
   4. Delete all PVCs → marks volumes for deletion
   5. Delete all ConfigMaps/Secrets
-  ↓
+  
 PV controller deletes actual volumes
-  ↓
+  
 Namespace fully removed
 ```
 
@@ -764,30 +684,11 @@ Namespace fully removed
 - Namespace with PVCs: up to 2 minutes
 
 **Guarantees**:
-- ✅ No orphaned Pods
-- ✅ No orphaned Services
-- ✅ No orphaned PVCs
-- ✅ NodePort released (can be reused)
-- ⚠️ Actual disk space freed asynchronously
-
-### Edge Cases
-
-**Case 1: Namespace stuck in "Terminating"**
-```
-Cause: Finalizer blocking deletion
-Fix:
-  kubectl get namespace store-1 -o json > ns.json
-  # Edit ns.json, remove finalizers
-  kubectl replace --raw "/api/v1/namespaces/store-1/finalize" -f ns.json
-```
-
-**Case 2: PVC not deleting**
-```
-Cause: Pod still using volume
-Fix:
-  kubectl delete pods --all -n store-1 --force --grace-period=0
-  kubectl delete pvc --all -n store-1
-```
+-  No orphaned Pods
+-  No orphaned Services
+-  No orphaned PVCs
+-  NodePort released (can be reused)
+-  Actual disk space freed asynchronously
 
 ---
 
@@ -879,7 +780,7 @@ helm upgrade --install store-1 store-chart \
   --create-namespace
 ```
 
-**Same chart, different values** ✅
+**Same chart, different values** 
 
 ### Migration Path
 
@@ -905,7 +806,7 @@ kubectl exec -n store-1 deployment/mysql -- \
 
 # 5. Update WordPress URLs
 kubectl exec -n store-1 deployment/wordpress -- \
-  wp search-replace 'localhost:30123' 'yourdomain.com' --allow-root
+  wp search-replace 'localhost:30123' 'our_domain.com' --allow-root
 ```
 
 ---
@@ -915,201 +816,29 @@ kubectl exec -n store-1 deployment/wordpress -- \
 ### Current State (MVP)
 
 **What's Secure**:
-- ✅ Namespace isolation (resource-level)
-- ✅ Services are ClusterIP (MySQL not exposed)
-- ✅ No privileged containers
-- ✅ Read-only root filesystem (where possible)
+-  Namespace isolation (resource-level)
+-  Services are ClusterIP (MySQL not exposed)
+-  No privileged containers
+-  Read-only root filesystem (where possible)
+-  Passwords in Secrets
 
-**What's NOT Secure** (known gaps):
+#### Secrets Management Implemented
 
-| Issue | Impact | Mitigation Plan |
-|-------|--------|-----------------|
-| Passwords in values.yaml | Visible in Helm release | Move to Kubernetes Secrets |
-| No RBAC | Backend has cluster-admin | Create ServiceAccount with limited permissions |
-| No NetworkPolicies | Pods can talk across namespaces | Implement deny-by-default policies |
-| Containers run as root | Privilege escalation risk | Use securityContext.runAsNonRoot |
-| No Pod Security Standards | Can mount host paths | Enable PSS in namespace |
-| HTTP only (no TLS) | Traffic in plaintext | cert-manager + Let's Encrypt |
+Sensitive data (database passwords, credentials) are stored in Kubernetes Secrets instead of plain text in values.yaml.
 
-### Secrets Management
+**Implementation:**
+- MySQL credentials stored in `mysql-secret` Secret per namespace
+- Deployments reference secrets via `secretKeyRef`
+- Secrets are base64 encoded
+- Not committed to Git (values.yaml contains defaults only)
 
-**Current (BAD)**:
-```yaml
-# values.yaml
-mysql:
-  rootPassword: "rootpassword"  # ❌ Plain text!
-  password: "wordpress"
-```
-
-**Future (GOOD)**:
-```yaml
-# templates/secret.yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: mysql-secret
-type: Opaque
-stringData:
-  root-password: {{ .Values.mysql.rootPassword | b64enc }}
-  password: {{ .Values.mysql.password | b64enc }}
-
-# mysql-deployment.yaml
-env:
-- name: MYSQL_ROOT_PASSWORD
-  valueFrom:
-    secretKeyRef:
-      name: mysql-secret
-      key: root-password
-```
-
-**Production (BEST)**:
-```bash
-# Use external secret management
-# Option 1: Sealed Secrets
-kubeseal < secret.yaml > sealed-secret.yaml
-
-# Option 2: External Secrets Operator
-# Sync from AWS Secrets Manager / Vault
-
-# Option 3: SOPS
-sops -e secret.yaml > secret.enc.yaml
-```
-
-### RBAC Plan
-
-**Current**: Backend uses default kubeconfig (cluster-admin)
-
-**Future**:
-```yaml
-# ServiceAccount for backend
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: store-provisioner
-  namespace: platform
-
----
-# Role: Can create/delete namespaces and resources
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: store-provisioner-role
-rules:
-- apiGroups: [""]
-  resources: ["namespaces"]
-  verbs: ["create", "delete", "get", "list"]
-- apiGroups: ["apps"]
-  resources: ["deployments"]
-  verbs: ["create", "delete", "get", "list"]
-# ... more specific permissions
-
----
-# Bind role to ServiceAccount
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: store-provisioner-binding
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: store-provisioner-role
-subjects:
-- kind: ServiceAccount
-  name: store-provisioner
-  namespace: platform
-```
-
-**Backend uses this**:
-```javascript
-// Use ServiceAccount token instead of ~/.kube/config
-const k8sConfig = {
-  token: fs.readFileSync('/var/run/secrets/kubernetes.io/serviceaccount/token'),
-  ca: fs.readFileSync('/var/run/secrets/kubernetes.io/serviceaccount/ca.crt')
-};
-```
+**Production Enhancement:**
+For production, integrate with external secret management:
+- External Secrets Operator (AWS Secrets Manager, Vault)
 
 ### Network Security
 
 **Current**: All pods can communicate
-
-**Future NetworkPolicy** (deny-by-default):
-```yaml
-# Deny all ingress by default
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: default-deny
-  namespace: store-1
-spec:
-  podSelector: {}
-  policyTypes:
-  - Ingress
-
----
-# Allow WordPress → MySQL
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: allow-wordpress-to-mysql
-  namespace: store-1
-spec:
-  podSelector:
-    matchLabels:
-      app: mysql
-  ingress:
-  - from:
-    - podSelector:
-        matchLabels:
-          app: wordpress
-    ports:
-    - protocol: TCP
-      port: 3306
-
----
-# Allow external → WordPress
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: allow-external-to-wordpress
-  namespace: store-1
-spec:
-  podSelector:
-    matchLabels:
-      app: wordpress
-  ingress:
-  - ports:
-    - protocol: TCP
-      port: 80
-```
-
-### Container Hardening
-
-**Current**:
-```yaml
-# No security context
-containers:
-- name: wordpress
-  image: wordpress:latest
-```
-
-**Future**:
-```yaml
-containers:
-- name: wordpress
-  image: wordpress:latest
-  securityContext:
-    runAsNonRoot: true
-    runAsUser: 1000
-    readOnlyRootFilesystem: false  # WordPress needs write access
-    allowPrivilegeEscalation: false
-    capabilities:
-      drop:
-      - ALL
-      add:
-      - NET_BIND_SERVICE  # Bind to port 80
-```
-
-**Trade-off**: Some WordPress features may break with strict security
 
 ---
 
@@ -1121,7 +850,7 @@ containers:
 |-----------|---------|------------------------|
 | **React Dashboard** | 1 instance (laptop) | Deploy as K8s Deployment, 3+ replicas, LoadBalancer |
 | **Node.js Backend** | 1 instance (laptop) | Deploy as K8s Deployment, 3+ replicas, shared state in Redis/DB |
-| **MySQL (per store)** | 1 replica | Keep single replica OR MySQL replication (complex) |
+| **MySQL (per store)** | 1 replica | Keep single replica OR MySQL replication |
 | **WordPress (per store)** | 1 replica | Scale to 2-3 replicas, shared storage (ReadWriteMany PVC) |
 | **Kubernetes** | Single node | Multi-node cluster, node autoscaling |
 
@@ -1133,43 +862,6 @@ Provisioning: Sequential (one at a time)
 Throughput: ~1 store per 3 minutes = 20 stores/hour
 Bottleneck: Single backend process, helm --wait blocks
 ```
-
-**Improvement 1: Async queue**:
-```javascript
-// Use Bull queue + Redis
-const Queue = require('bull');
-const provisionQueue = new Queue('store-provisioning');
-
-// Producer
-app.post('/api/stores/create', async (req, res) => {
-  const store = createStoreObject();
-  await provisionQueue.add(store);  // Add to queue
-  res.json({ success: true });
-});
-
-// Worker (can scale to N workers)
-provisionQueue.process(5, async (job) => {  // 5 concurrent
-  await provisionStore(job.data);
-});
-```
-
-**Result**: 5 stores provisioning concurrently = 100 stores/hour
-
-**Improvement 2: Remove --wait**:
-```javascript
-// Don't wait for helm to finish
-await runCommand(`helm install ... --wait=false`);
-
-// Poll separately
-setInterval(async () => {
-  const status = await checkPodStatus(storeId);
-  if (status === 'Running') {
-    updateStoreStatus(storeId, 'ready');
-  }
-}, 10000);
-```
-
-**Result**: Backend non-blocking, unlimited concurrent provisioning
 
 ### Resource Constraints
 
@@ -1191,25 +883,6 @@ t3.xlarge (16GB RAM, 4 vCPU):
   Max stores: ~28 stores
 ```
 
-**Solution: Multi-node cluster**:
-```bash
-# Add nodes to cluster
-# K8s scheduler distributes pods across nodes
-# Each node: 16GB RAM = 28 stores
-# 10 nodes = 280 stores
-```
-
-**Auto-scaling**:
-```yaml
-# Cluster Autoscaler
-apiVersion: autoscaling.k8s.io/v1
-kind: ClusterAutoscaler
-spec:
-  minNodes: 3
-  maxNodes: 10
-  scaleDownDelay: 10m
-```
-
 ### Database Scaling
 
 **MySQL per store**:
@@ -1220,7 +893,7 @@ Limitation: No HA, single point of failure
 
 **Options**:
 
-1. **Keep single replica** (RECOMMENDED for MVP)
+1. **Keep single replica**
    - Simple, cheap
    - Acceptable downtime for non-critical stores
 
@@ -1318,45 +991,10 @@ Chosen: Laptop
 5. **No testing** → No automated tests
 
 **Security Limitations**:
-1. **Passwords in plaintext** → Values files have secrets
-2. **No RBAC** → Backend is cluster-admin
-3. **No network policies** → Pods can talk to each other
-4. **Root containers** → Security risk
-5. **No secrets rotation** → Static passwords forever
-
-### What Would I Do With More Time?
-
-**Week 2** (Production Hardening):
-- [ ] TLS with cert-manager
-- [ ] Ingress controller (nginx)
-- [ ] External Secrets Operator
-- [ ] RBAC with ServiceAccounts
-- [ ] NetworkPolicies
-- [ ] ResourceQuotas per namespace
-- [ ] Pod Security Standards
-
-**Week 3** (Observability):
-- [ ] Prometheus + Grafana
-- [ ] Elasticsearch + Fluentd + Kibana
-- [ ] Alertmanager (PagerDuty integration)
-- [ ] Distributed tracing (Jaeger)
-- [ ] Uptime monitoring (UptimeRobot)
-
-**Week 4** (Features):
-- [ ] WooCommerce auto-setup (wp-cli Job)
-- [ ] Custom domains (cert-manager DNS challenges)
-- [ ] Auto-scaling (HPA for WordPress)
-- [ ] Backup/restore (Velero)
-- [ ] Database migration (MySQL operator)
-- [ ] Multi-region deployment
-
-**Month 2** (Scale):
-- [ ] Multi-tenancy improvements
-- [ ] Billing integration
-- [ ] Admin dashboard
-- [ ] API rate limiting
-- [ ] DDoS protection
-- [ ] CDN integration (Cloudflare)
+1. **No RBAC** → Backend is cluster-admin
+2. **No network policies** → Pods can talk to each other
+3. **Root containers** → Security risk
+4. **No secrets rotation** → Static passwords forever
 
 ---
 
@@ -1366,14 +1004,14 @@ Chosen: Laptop
 
 A **production-ready foundation** for a multi-tenant store provisioning platform:
 
-✅ Complete namespace isolation  
-✅ Kubernetes-native orchestration  
-✅ Helm-based deployment (local → prod)  
-✅ Persistent storage  
-✅ Health checks & self-healing  
-✅ Clean resource cleanup  
-✅ Async provisioning (good UX)  
-✅ Idempotent operations  
+ Complete namespace isolation  
+ Kubernetes-native orchestration  
+ Helm-based deployment (local → prod)  
+ Persistent storage  
+ Health checks & self-healing  
+ Clean resource cleanup  
+ Async provisioning (good UX)  
+ Idempotent operations  
 
 ### What Makes This Production-Ready
 

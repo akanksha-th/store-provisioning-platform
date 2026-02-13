@@ -1,22 +1,5 @@
 # System Design & Architecture
 
-## Table of Contents
-
-1. [Overview](#overview)
-2. [Architecture Decisions](#architecture-decisions)
-3. [Component Design](#component-design)
-4. [Data Flow](#data-flow)
-5. [Isolation Strategy](#isolation-strategy)
-6. [Persistence & Storage](#persistence--storage)
-7. [Failure Handling & Idempotency](#failure-handling--idempotency)
-8. [Cleanup Guarantees](#cleanup-guarantees)
-9. [Local vs Production](#local-vs-production)
-10. [Security Posture](#security-posture)
-11. [Scalability Plan](#scalability-plan)
-12. [Tradeoffs & Limitations](#tradeoffs--limitations)
-
----
-
 ## Overview
 
 ### Problem Statement
@@ -376,12 +359,12 @@ nodePort: auto-assigned (30000-32767)
 4. Background (async):
    - helm upgrade --install store-1 ...
    - Kubernetes creates:
-     ✓ Namespace: store-1
-     ✓ PVC: mysql-pvc
-     ✓ Deployment: mysql (waits for PVC)
-     ✓ Service: mysql-service
-     ✓ Deployment: wordpress (waits for MySQL via initContainer)
-     ✓ Service: wordpress-service
+     - Namespace: store-1
+     - PVC: mysql-pvc
+     - Deployment: mysql (waits for PVC)
+     - Service: mysql-service
+     - Deployment: wordpress (waits for MySQL via initContainer)
+     - Service: wordpress-service
    - Helm --wait flag blocks until pods are 1/1 Running
    - kubectl get service to fetch NodePort
    - Update store: status = "ready", port = 31234
@@ -562,15 +545,6 @@ If store-1 doesn't exist: Install it
 If store-1 exists: Upgrade it (no-op if no changes)
 Never fails with "already exists"
 ```
-
-**Scenarios**:
-
-| Scenario | Behavior | Safe? |
-|----------|----------|-------|
-| Create same store twice | Second call upgrades |  Yes |
-| Backend crashes mid-provision | Retry helm install |  Yes |
-| Delete non-existent store | 404 error (expected) |  Yes |
-| Delete same store twice | First succeeds, second 404 |  Yes |
 
 ### Failure Scenarios
 
@@ -863,26 +837,6 @@ Throughput: ~1 store per 3 minutes = 20 stores/hour
 Bottleneck: Single backend process, helm --wait blocks
 ```
 
-### Resource Constraints
-
-**Single Node Limits**:
-```
-t2.micro (1GB RAM, 1 vCPU):
-  System overhead: 400MB
-  Available: 600MB
-  Per store: ~500MB (MySQL + WordPress)
-  Max stores: 1 store
-
-t2.medium (4GB RAM, 2 vCPU):
-  System overhead: 1GB
-  Available: 3GB
-  Max stores: ~6 stores
-
-t3.xlarge (16GB RAM, 4 vCPU):
-  Available: 14GB
-  Max stores: ~28 stores
-```
-
 ### Database Scaling
 
 **MySQL per store**:
@@ -907,7 +861,6 @@ Limitation: No HA, single point of failure
 ```
    AWS RDS, Google Cloud SQL
    Offload database management
-   $$$
 ```
 
 ---
@@ -926,8 +879,6 @@ Chosen: Namespace per store
 | Easy cleanup | More API calls to K8s |
 | Production-ready | Namespace quotas (some clouds limit to 1000) |
 
-**Impact**: For <1000 stores, namespace-per-store is the right choice
-
 ---
 
 **Tradeoff 2: Synchronous vs Asynchronous provisioning**
@@ -939,8 +890,6 @@ Chosen: Asynchronous
 | Better UX (no 3-min wait) | Need polling for status |
 | Can provision multiple stores | More complex code |
 | Resilient to backend restarts | State management required |
-
-**Impact**: Better UX worth the complexity
 
 ---
 
@@ -954,8 +903,6 @@ Chosen: Helm
 | Versioning | Another tool to install |
 | Rollback capability | Helm releases add overhead |
 
-**Impact**: Required by assignment, and it's the right choice
-
 ---
 
 **Tradeoff 4: Backend on laptop vs in K8s**
@@ -967,8 +914,6 @@ Chosen: Laptop
 | Simple development | Not HA |
 | Easy debugging | Single point of failure |
 | Fast iteration | Doesn't scale horizontally |
-
-**Impact**: Fine for demo, needs to move to K8s for production
 
 ---
 
@@ -1022,22 +967,11 @@ A **production-ready foundation** for a multi-tenant store provisioning platform
 
 ### What's Missing for True Production
 
-- Secrets management
 - RBAC & least privilege
 - Monitoring & logging
 - TLS & proper ingress
 - Backup & disaster recovery
 - Auto-scaling & HA
-
-**But**: The foundation is solid. These are additive improvements, not rearchitecture.
-
-### Lessons Learned
-
-1. **Start simple**: Namespace-per-store is simple and scales
-2. **Async is worth it**: Better UX, more resilient
-3. **Helm templates are powerful**: Same code, different environments
-4. **Observability gap hurts**: Need logs/metrics to debug production
-5. **Security is hard**: Easy to skip, painful to retrofit
 
 ---
 

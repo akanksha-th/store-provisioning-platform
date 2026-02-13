@@ -9,7 +9,7 @@ yarn-error.log*
 /dashboard/.env.local
 /dashboard/.env
 docker/
-backend/stores.json
+/backend/stores.json
 
 # Docker volumes & generated files
 docker-compose/store-*.yml

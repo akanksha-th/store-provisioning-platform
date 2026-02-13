@@ -48,10 +48,3 @@ ingress:
   enabled: false
   host: ""
   tls: false
-
-woocommerce:
-  enabled: true
-  storeName: "My WooCommerce Store"
-  adminUser: "admin"
-  adminPassword: "admin123"
-  adminEmail: "admin@example.com"

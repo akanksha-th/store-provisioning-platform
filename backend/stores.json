@@ -1,29 +1,21 @@
 {
   "stores": [
     {
-      "id": "store-3",
-      "name": "Store 3",
-      "port": "30820",
+      "id": "store-1",
+      "name": "Store 1",
+      "port": "31924",
       "status": "ready",
-      "createdAt": "2026-02-11T06:15:25.881Z",
-      "url": "http://localhost:30820"
+      "createdAt": "2026-02-13T06:38:01.518Z",
+      "url": "http://localhost:31924"
     },
     {
-      "id": "store-4",
-      "name": "Store 4",
-      "port": "31935",
+      "id": "store-2",
+      "name": "Store 2",
+      "port": "30237",
       "status": "ready",
-      "createdAt": "2026-02-11T06:15:34.400Z",
-      "url": "http://localhost:31935"
-    },
-    {
-      "id": "store-5",
-      "name": "Store 5",
-      "port": "31322",
-      "status": "ready",
-      "createdAt": "2026-02-11T06:17:25.222Z",
-      "url": "http://localhost:31322"
+      "createdAt": "2026-02-13T06:38:04.420Z",
+      "url": "http://localhost:30237"
     }
   ],
-  "counter": 6
+  "counter": 3
 }

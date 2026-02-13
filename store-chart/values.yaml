@@ -37,8 +37,8 @@ wordpress:
       cpu: "500m"
   persistence:
     enabled: false
-    size: "5Gi"
     storageClass: ""
+    size: "5Gi"
 
 service:
   type: NodePort
@@ -48,3 +48,10 @@ ingress:
   enabled: false
   host: ""
   tls: false
+
+woocommerce:
+  enabled: true
+  storeName: "My WooCommerce Store"
+  adminUser: "admin"
+  adminPassword: "admin123"
+  adminEmail: "admin@example.com"

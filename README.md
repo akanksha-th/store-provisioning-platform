@@ -86,13 +86,10 @@ http://localhost:3000
 
 **2. Install k3s**
 ```bash
-curl -sfL https://get.k3s.io | sh -s - --write-kubeconfig-mode 644
-
-# Wait 30 seconds for k3s to start
-sleep 30
+curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
 
 # Verify installation
-kubectl get nodes
+k3d version
 ```
 
 **3. Get k3s config**
